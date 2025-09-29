@@ -1,6 +1,11 @@
-# 忽略项目根下的 data 目录以及所有子文件
-/data/
+# 忽略所有文件和文件夹
+*
 
-# 忽略所有以 .log 结尾的日志文件（如 error.log, access.log）
-*.log
+# 但是不要忽略 upload/ 文件夹
+!upload/
 
+# 确保 upload/ 文件夹内的所有内容都不被忽略
+!upload/**
+
+# 不要忽略 .gitignore 文件本身
+!.gitignore
