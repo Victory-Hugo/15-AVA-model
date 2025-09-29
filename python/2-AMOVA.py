@@ -12,13 +12,6 @@ Diversity_pattern_score = (Within%)/100
 - Output: Two-column CSV: <class_col>,Diversity_pattern_score.
 - Only implements linear baseline; no normalization, weighting or other derived indicators.
 
-Usage example:
-python3 /mnt/f/6_起源地混合地/4-整合打分系统/python/3-AMOVA整理.py \
-   --class_col "Continent" \
-   --variation_type "Source of variation" \
-   --variation_value "Percentage of variation" \
-   --input /mnt/f/6_起源地混合地/4-整合打分系统/data/AMOVA.csv \
-   --output /mnt/f/6_起源地混合地/4-整合打分系统/output/AMOVA_scores.csv
 """
 
 import argparse

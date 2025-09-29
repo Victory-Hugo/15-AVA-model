@@ -12,14 +12,6 @@ Function:
   3) Export scoring result file score_<keyword>.csv
   4) Summary output Final_unique_hap.csv (two columns: <class-col>, Unique_hap_score)
 
-Output structure:
-- <out-dir>/Final_unique_hap.csv
-- <out-dir>/Frequency_result/
-    ├─ unique_haplogroups_<keyword>.txt
-    ├─ merged_haplogroup_frequencies_<keyword>.txt
-    ├─ score_<keyword>.csv
-    └─ combined_haplogroup_scores.csv
-
 Frequency definition (sample frequency, not real population frequency):
 # freq_in  = count_in  / total_in
 # freq_out = count_out / total_out
