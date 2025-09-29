@@ -1,11 +1,11 @@
-# 忽略所有文件和文件夹
+
 *
 
-# 但是不要忽略 upload/ 文件夹
+
 !upload/
 
-# 确保 upload/ 文件夹内的所有内容都不被忽略
+
 !upload/**
 
-# 不要忽略 .gitignore 文件本身
+
 !.gitignore
