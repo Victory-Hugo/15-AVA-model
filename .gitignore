@@ -1,0 +1,6 @@
+# 忽略项目根下的 data 目录以及所有子文件
+/data/
+
+# 忽略所有以 .log 结尾的日志文件（如 error.log, access.log）
+*.log
+
