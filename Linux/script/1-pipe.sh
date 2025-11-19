@@ -2,9 +2,9 @@
 set -euo pipefail
 
 # ==== Path ====
-ROOT="15-AVA-model/upload/"
+ROOT="/mnt/f/OneDrive/文档（科研）/脚本/Download/15-AVA-model/Linux/"
 PY="$ROOT/python"
-DATA="$ROOT/Example"
+DATA="$ROOT/Example/input"
 OUT="$ROOT/output"
 
 # ==== Keys ====
