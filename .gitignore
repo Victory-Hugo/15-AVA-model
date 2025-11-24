@@ -1,5 +1,5 @@
 
-*
+Bak/**
 
 
 !upload/
@@ -7,6 +7,4 @@
 !Linux/
 !upload/**
 
-!Win/**
-!Win/
-!.gitignore
+
