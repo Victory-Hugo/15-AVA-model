@@ -8,15 +8,35 @@ import shutil
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+import multiprocessing
 
 import ttkbootstrap as tb
 from ttkbootstrap.widgets.scrolled import ScrolledText
 
 
+def is_pyinstaller_exe():
+    """检测是否运行在 PyInstaller 打包的 exe 中"""
+    return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
+
+
+def get_python_executable():
+    """
+    获取 Python 解释器路径。
+    - 如果在源码中运行，返回当前解释器
+    - 如果在 PyInstaller exe 中运行，返回系统 Python 或 "python"
+    """
+    if is_pyinstaller_exe():
+        # 在 exe 中，使用系统 Python 或直接用 "python" 命令
+        return "python"
+    else:
+        # 在源码中运行，使用当前解释器
+        return sys.executable
+
+
 DEFAULTS = {
     "py_dir": r"../python",
-    "key_column": "Continent",
-    "unique_keys": "Africa,Central_Asia,Southeast_Asia",
+    "key_column": "River",
+    "unique_keys": "Yellow River,Yangtze River,Zhujiang River",
     "time_column": "Time_years",
     "in_time_csv": r"Time.csv",
     "in_amova_csv": r"AMOVA.csv",
@@ -32,9 +52,9 @@ DEFAULTS = {
     "skew_method": "auto",
     "variation_type": "Source of variation",
     "variation_value": "Percentage of variation",
-    "unique_keyword": "Africa,Central_Asia,Southeast_Asia",
+    "unique_keyword": "Yellow River,Yangtze River,Zhujiang River",
     "enable_time_vary": "NO",
-    "ancient_start": "100000",
+    "ancient_start": "25000",
     "ancient_end": "0",
     "ancient_step": "500",
     "w_time_depth": "4.0",
@@ -531,4 +551,6 @@ def main():
 
 
 if __name__ == "__main__":
+    # 防止在打包为exe后出现无限循环创建窗口的问题
+    multiprocessing.freeze_support()
     main()

@@ -4,21 +4,21 @@ from pathlib import Path
 """
 AMOVA -> Diversity_pattern_score (Scheme 1: Linear baseline)
 
-公式：
+Formula:
 Diversity_pattern_score = (Within%)/100
 
-- 输入：包含分组列（--class_col）、“Source of variation”列、以及“Percentage of variation”列的 CSV/TSV（分隔符自动识别）。
-- 逻辑：按分类列（--class_col）选取 Source of variation == "Within populations" 的百分数作为 Within%，线性映射到 [0,1]。
-- 输出：两列 CSV：<class_col>,Diversity_pattern_score。
-- 仅实现线性基线；不做归一化、权重或其它派生指标。
+- Input: CSV/TSV (delimiter auto-detected) containing a grouping column (--class_col), a "Source of variation" column, and a "Percentage of variation" column.
+- Logic: for the grouping column (--class_col), take the percentage where Source of variation == "Within populations" as Within%, map linearly to [0,1].
+- Output: two-column CSV: <class_col>,Diversity_pattern_score.
+- Only implements the linear baseline; no normalization, weighting, or other derived metrics.
 
-用法示例：
-python3 /mnt/f/6_起源地混合地/4-整合打分系统/python/3-AMOVA整理.py \
+Usage example:
+python3 /mnt/f/6_origin_mix/4-integrated_scoring/python/3-AMOVA_clean.py \
    --class_col "Continent" \
    --variation_type "Source of variation" \
    --variation_value "Percentage of variation" \
-   --input /mnt/f/6_起源地混合地/4-整合打分系统/data/AMOVA.csv \
-   --output /mnt/f/6_起源地混合地/4-整合打分系统/output/AMOVA_scores.csv
+   --input /mnt/f/6_origin_mix/4-integrated_scoring/data/AMOVA.csv \
+   --output /mnt/f/6_origin_mix/4-integrated_scoring/output/AMOVA_scores.csv
 """
 
 import argparse
@@ -29,7 +29,7 @@ import numpy as np
 
 
 def _find_col(df: pd.DataFrame, target: str) -> Optional[str]:
-    """在 df 中宽松匹配用户提供的列名 target，返回实际列名或 None。"""
+    """Loosely match a user-supplied column name in df, return the actual name or None."""
     if target in df.columns:
         return target
     lowmap = {c.lower().strip(): c for c in df.columns}
@@ -37,7 +37,7 @@ def _find_col(df: pd.DataFrame, target: str) -> Optional[str]:
     if t_low in lowmap:
         return lowmap[t_low]
 
-    # 更宽松：去掉空格与括号/百分号等符号后再匹配
+    # Looser: strip spaces and symbols like parentheses/percent signs before matching
     def _norm(x: str) -> str:
         x = x.lower().strip()
         for ch in ['(', ')', '%']:
@@ -75,12 +75,12 @@ def load_amova(path: str, class_col: str, var_type_col: str, var_value_col: str)
         (var_value_col, pct_col),
     ] if real is None]
     if missing:
-        raise ValueError(f"无法识别以下列：{missing}；输入文件包含列：{list(df.columns)}")
+        raise ValueError(f"Could not identify these columns: {missing}; input file columns: {list(df.columns)}")
 
     df['_Region'] = df[region_col].astype(str).str.strip()
     df['_Source'] = df[source_col].astype(str).str.strip().str.lower()
     df['_Pct'] = _to_numeric_percent(df[pct_col])
-    df['_Region_colname'] = region_col  # 记录原始列名，便于输出
+    df['_Region_colname'] = region_col  # record the original column name for output
     return df
 
 
@@ -88,7 +88,7 @@ def compute_origin_scores(df: pd.DataFrame, class_col: str) -> pd.DataFrame:
     mask_within = df['_Source'].str.fullmatch(r'within populations', case=False, na=False)
     within = df.loc[mask_within, ['_Region', '_Pct']].copy()
     if within.empty:
-        raise ValueError("未找到 'Within populations' 行，请检查输入数据及列名。")
+        raise ValueError("No 'Within populations' row found; please check input data and column names.")
 
     agg = within.groupby('_Region', as_index=False)['_Pct'].mean()
     origin = agg.copy()
@@ -99,12 +99,12 @@ def compute_origin_scores(df: pd.DataFrame, class_col: str) -> pd.DataFrame:
 
 
 def main():
-    ap = argparse.ArgumentParser(description="AMOVA -> Diversity_pattern_score（线性基线）")
-    ap.add_argument('--class_col', required=True, help='分类列名（例如：Continent/Region）')
-    ap.add_argument('--variation_type', required=True, help='变异类型列名（例如：Source of variation）')
-    ap.add_argument('--variation_value', required=True, help='变异百分比列名（例如：Percentage of variation）')
-    ap.add_argument('--input', required=True, help='输入 AMOVA CSV/TSV 文件路径')
-    ap.add_argument('--output', required=True, help='输出 CSV 文件路径')
+    ap = argparse.ArgumentParser(description="AMOVA -> Diversity_pattern_score (linear baseline)")
+    ap.add_argument('--class_col', required=True, help='Grouping column name (e.g., Continent/Region)')
+    ap.add_argument('--variation_type', required=True, help='Variation type column name (e.g., Source of variation)')
+    ap.add_argument('--variation_value', required=True, help='Variation percentage column name (e.g., Percentage of variation)')
+    ap.add_argument('--input', required=True, help='Input AMOVA CSV/TSV file path')
+    ap.add_argument('--output', required=True, help='Output CSV file path')
     args = ap.parse_args()
 
     df = load_amova(args.input, args.class_col, args.variation_type, args.variation_value)

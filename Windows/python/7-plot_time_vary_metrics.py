@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-基于聚合后的时间阈值遍历结果绘制折线图：
-- 横轴 ancient_threshold
-- 纵轴 All_score
-- 每个分组一条线
+Plot line charts based on aggregated time-threshold sweep results:
+- X-axis: ancient_threshold
+- Y-axis: All_score
+- One line per group
 """
 
 from __future__ import annotations
@@ -20,11 +20,11 @@ import pandas as pd
 def plot_scores(agg_csv: Path, out_png: Path, group_col: str) -> None:
     df = pd.read_csv(agg_csv)
     if group_col not in df.columns:
-        raise ValueError(f"聚合文件缺少分组列：{group_col}")
+        raise ValueError(f"Aggregated file is missing grouping column: {group_col}")
     if "ancient_threshold" not in df.columns:
-        raise ValueError("聚合文件缺少 ancient_threshold 列")
+        raise ValueError("Aggregated file is missing ancient_threshold column")
     if "All_score" not in df.columns:
-        raise ValueError("聚合文件缺少 All_score 列")
+        raise ValueError("Aggregated file is missing All_score column")
 
     plt.figure(figsize=(10, 6), dpi=140)
     colors: Dict[str, str] = {}
@@ -49,14 +49,14 @@ def plot_scores(agg_csv: Path, out_png: Path, group_col: str) -> None:
 
     out_png.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_png, dpi=200, bbox_inches="tight")
-    print(f"[OK] 绘图完成: {out_png}")
+    print(f"[OK] Plot complete: {out_png}")
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="绘制时间阈值遍历得分折线图")
-    parser.add_argument("agg_csv", type=Path, help="6-aggregate_time_vary_results.py 的输出 CSV")
-    parser.add_argument("out_png", type=Path, help="输出 PNG 路径")
-    parser.add_argument("group_col", type=str, help="分组列名（如 River / Continent）")
+    parser = argparse.ArgumentParser(description="Plot time-threshold sweep score line chart")
+    parser.add_argument("agg_csv", type=Path, help="Output CSV from 6-aggregate_time_vary_results.py")
+    parser.add_argument("out_png", type=Path, help="Output PNG path")
+    parser.add_argument("group_col", type=str, help="Grouping column name (e.g., River / Continent)")
     args = parser.parse_args()
 
     plot_scores(args.agg_csv, args.out_png, args.group_col)

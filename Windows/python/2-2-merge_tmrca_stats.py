@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-合并时间深度和时间分布指标
-功能：将 1-time_depth.py 和 1-time_distribution.py 的输出合并为一个完整的 CSV
+Merge time depth and time distribution metrics
+Purpose: merge outputs of 1-time_depth.py and 1-time_distribution.py into a complete CSV
 """
 
 from pathlib import Path
@@ -13,7 +13,7 @@ import pandas as pd
 
 
 def _parse_group_col(arg: str) -> Optional[Union[str, List[str]]]:
-    """解析命令行的 group_col 参数"""
+    """Parse the group_col argument from the command line"""
     if arg is None:
         return "Continent"
     s = arg.strip()
@@ -31,22 +31,22 @@ def merge_tmrca_stats(
     group_col: Optional[Union[str, List[str]]] = None,
 ) -> pd.DataFrame:
     """
-    合并时间深度和时间分布统计结果
+    Merge time depth and time distribution statistics
     
-    参数：
-    - time_depth_csv: 时间深度指标文件路径
-    - time_distribution_csv: 时间分布指标文件路径
-    - output_csv: 输出文件路径
-    - group_col: 分组列名（用于合并）
+    Parameters:
+    - time_depth_csv: path to the time depth metrics file
+    - time_distribution_csv: path to the time distribution metrics file
+    - output_csv: output file path
+    - group_col: grouping column name(s) used for merging
     
-    返回：
-    - 合并后的 DataFrame
+    Returns:
+    - merged DataFrame
     """
-    # 读取两个文件
+    # Read both files
     df_depth = pd.read_csv(time_depth_csv)
     df_dist = pd.read_csv(time_distribution_csv)
     
-    # 确定分组列
+    # Determine grouping columns
     if group_col is None:
         merge_on = ["Group"]
     else:
@@ -55,15 +55,15 @@ def merge_tmrca_stats(
         else:
             merge_on = list(group_col)
     
-    # 检查分组列是否存在
+    # Check whether grouping columns exist
     for col in merge_on:
         if col not in df_depth.columns:
-            raise ValueError(f"时间深度文件缺少分组列：{col}")
+            raise ValueError(f"Time depth file is missing grouping column: {col}")
         if col not in df_dist.columns:
-            raise ValueError(f"时间分布文件缺少分组列：{col}")
+            raise ValueError(f"Time distribution file is missing grouping column: {col}")
     
-    # 合并（外连接，保留所有分组）
-    # Count 列在两个文件中都有，保留第一个即可
+    # Merge (outer join, keep all groups)
+    # Count column exists in both files; keep the first one
     df_dist_cols = [c for c in df_dist.columns if c not in merge_on and c != "Count"]
     df_merged = df_depth.merge(
         df_dist[merge_on + df_dist_cols],
@@ -71,7 +71,7 @@ def merge_tmrca_stats(
         how="outer"
     )
     
-    # 保存
+    # Save
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     df_merged.to_csv(output_csv, index=False, encoding="utf-8-sig")
     
@@ -86,28 +86,28 @@ def main():
         have_tabulate = False
 
     parser = argparse.ArgumentParser(
-        description="合并时间深度和时间分布指标为完整的 TMRCA 统计结果"
+        description="Merge time depth and time distribution metrics into complete TMRCA statistics"
     )
     parser.add_argument("--time_depth_csv", required=True, type=Path,
-                        help="时间深度指标文件路径（1-time_depth.py 的输出）")
+                        help="Path to time depth metrics file (output of 1-time_depth.py)")
     parser.add_argument("--time_distribution_csv", required=True, type=Path,
-                        help="时间分布指标文件路径（1-time_distribution.py 的输出）")
+                        help="Path to time distribution metrics file (output of 1-time_distribution.py)")
     parser.add_argument("--out_csv", required=True, type=Path,
-                        help="输出合并后的 CSV 文件路径")
+                        help="Output path for merged CSV")
     parser.add_argument("--group_col", type=str, default="Continent",
-                        help='分组列：单列如 "Continent"，或多列如 "Continent,Country"；传 "none" 表示不分组')
+                        help='Grouping columns: single column like "Continent", or multiple like "Continent,Country"; pass "none" for no grouping')
 
     args = parser.parse_args()
 
-    # 校验
+    # Validation
     if not args.time_depth_csv.exists():
-        raise FileNotFoundError(f"时间深度文件未找到：{args.time_depth_csv}")
+        raise FileNotFoundError(f"Time depth file not found: {args.time_depth_csv}")
     if not args.time_distribution_csv.exists():
-        raise FileNotFoundError(f"时间分布文件未找到：{args.time_distribution_csv}")
+        raise FileNotFoundError(f"Time distribution file not found: {args.time_distribution_csv}")
 
     group_col = _parse_group_col(args.group_col)
 
-    # 合并
+    # Merge
     result = merge_tmrca_stats(
         args.time_depth_csv,
         args.time_distribution_csv,
@@ -115,16 +115,16 @@ def main():
         group_col=group_col,
     )
 
-    # 打印
+    # Print
     if result.empty:
-        print("合并结果为空。")
+        print("Merged result is empty.")
     else:
         if have_tabulate:
             print(tabulate(result, headers="keys", tablefmt="github", showindex=False))
         else:
             print(result.to_string(index=False))
-        print(f"\n已保存合并结果到: {args.out_csv.resolve()}")
-        print(f"总计 {len(result)} 个分组")
+        print(f"\nSaved merged result to: {args.out_csv.resolve()}")
+        print(f"Total {len(result)} group(s)")
 
 
 if __name__ == "__main__":

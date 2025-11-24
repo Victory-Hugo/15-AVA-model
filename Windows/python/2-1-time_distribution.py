@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-时间分布指标计算模块
-功能：计算与时间分布结构相关的指标
-- Range (log10 尺度)
-- StdDev (log10 尺度)
-- Skewness (log10 尺度，稳健计算)
+Time distribution metric calculation module
+Purpose: calculate metrics related to the temporal distribution structure
+- Range (log10 scale)
+- StdDev (log10 scale)
+- Skewness (log10 scale, robust calculation)
 - Estimated_Peaks (GMM + BIC)
 - Ratio(Max/Pq_nonzero)
 """
@@ -24,7 +24,7 @@ from sklearn.mixture import GaussianMixture
 
 
 def _bowley_skew(x: np.ndarray) -> float:
-    """Bowley（分位数）偏度；IQR=0 时返回 0.0"""
+    """Bowley (quantile) skewness; returns 0.0 when IQR=0"""
     q1, q2, q3 = np.quantile(x, [0.25, 0.5, 0.75])
     iqr = q3 - q1
     if iqr == 0:
@@ -34,10 +34,10 @@ def _bowley_skew(x: np.ndarray) -> float:
 
 def _safe_skew(x: np.ndarray, method: str = "auto") -> Tuple[float, str]:
     """
-    计算偏度，返回 (skew_value, method_used)。
-    - method="auto": 若样本近似常数或矩法不稳定 → 回退到 Bowley
-    - method="moment": 一直用矩法
-    - method="quantile": 一直用 Bowley
+    Compute skewness, return (skew_value, method_used).
+    - method="auto": if samples are near-constant or the moment method is unstable → fallback to Bowley
+    - method="moment": always use the moment method
+    - method="quantile": always use Bowley
     """
     x = np.asarray(x, dtype=float)
     x = x[~np.isnan(x)]
@@ -57,7 +57,7 @@ def _safe_skew(x: np.ndarray, method: str = "auto") -> Tuple[float, str]:
     if method == "quantile" or near_constant:
         return (_bowley_skew(x), "quantile")
 
-    # auto: 先尝试矩法，若数值不稳定则回退
+    # auto: first try the moment method, fallback if numerically unstable
     with warnings.catch_warnings(record=True) as wlist:
         warnings.simplefilter("always")
         v = moment_skew(x, bias=True)
@@ -78,19 +78,19 @@ def calc_time_distribution_stats(
     skew_method: str = "auto",
 ) -> pd.DataFrame:
     """
-    计算时间分布结构相关指标
+    Calculate metrics related to the temporal distribution structure
     
-    返回列：
-    - 分组列
-    - Count: 样本数
-    - Range: log10 尺度的范围
-    - StdDev: log10 尺度的标准差
-    - Skewness: log10 尺度的偏度
-    - Skew_method: 偏度计算方法
-    - Estimated_Peaks: GMM 估计的峰数
-    - Ratio(Max/Pq_nonzero): 最大值与正值分位数的比值
+    Returns columns:
+    - grouping columns
+    - Count: sample size
+    - Range: range on the log10 scale
+    - StdDev: standard deviation on the log10 scale
+    - Skewness: skewness on the log10 scale
+    - Skew_method: method used to compute skewness
+    - Estimated_Peaks: number of peaks estimated by GMM
+    - Ratio(Max/Pq_nonzero): ratio of max to the positive quantile
     """
-    # 分组器
+    # Grouper
     if group_col is None:
         groups = [(None, df)]
         group_cols: Optional[List[str]] = None
@@ -106,11 +106,11 @@ def calc_time_distribution_stats(
         if n < 2:
             continue
 
-        # 基础统计
+        # Basic statistics
         v_max = float(vals.max())
         v_min = float(vals.min())
 
-        # 正值样本分位数（用于计算比率）
+        # Positive sample quantile (for ratio calculation)
         positives = vals[vals > 0]
         if len(positives) > 0:
             p_nonzero = float(np.quantile(positives, ratio_quantile))
@@ -120,7 +120,7 @@ def calc_time_distribution_stats(
             p_nonzero = np.nan
         ratio_val = (v_max / p_nonzero) if (p_nonzero is not np.nan) and np.isfinite(p_nonzero) else np.nan
 
-        # log10 尺度的统计量
+        # Statistics on the log10 scale
         log_std = float("nan")
         log_rng = float("nan")
         skew_val = float("nan")
@@ -133,13 +133,13 @@ def calc_time_distribution_stats(
             log_std = float(pd.Series(log_vals_np).std())
             skew_val, skew_used = _safe_skew(log_vals_np, method=skew_method)
 
-        # 若 log_std 未定义（正值太少），则退回到原始值
+        # If log_std is undefined (too few positive values), fall back to original values
         if math.isnan(log_std):
             log_std = float(vals.std()) if len(vals) >= 2 else float("nan")
         if math.isnan(log_rng):
             log_rng = float(v_max - v_min)
 
-        # GMM 峰数估计
+        # GMM peak estimation
         est_peaks = np.nan
         uniq = None
         if log_vals_np is not None:
@@ -162,7 +162,7 @@ def calc_time_distribution_stats(
                     bic_scores.append(np.inf)
             est_peaks = float(cand[int(np.argmin(bic_scores))]) if not all(np.isinf(b) for b in bic_scores) else np.nan
 
-        # 构建结果行
+        # Build result row
         row: Dict[str, object] = {
             "Count": int(n),
             "Range": log_rng,
@@ -173,7 +173,7 @@ def calc_time_distribution_stats(
             f"Ratio(Max/P{int(ratio_quantile*100):02d}_nonzero)": ratio_val,
         }
 
-        # 添加分组列
+        # Add grouping columns
         if group_cols is None:
             row["Group"] = "ALL"
         else:
@@ -188,14 +188,14 @@ def calc_time_distribution_stats(
     if out.empty:
         return out
 
-    # 列顺序：分组列在前
+    # Column order: grouping columns first
     front_cols = (group_cols or ["Group"])
     metric_cols = [c for c in out.columns if c not in front_cols]
     return out[front_cols + metric_cols]
 
 
 def _parse_group_col(arg: str) -> Optional[Union[str, List[str]]]:
-    """解析命令行的 group_col 参数"""
+    """Parse the group_col argument from the command line"""
     if arg is None:
         return "Continent"
     s = arg.strip()
@@ -214,36 +214,36 @@ def main():
         have_tabulate = False
 
     parser = argparse.ArgumentParser(
-        description="计算时间分布结构相关指标（Range, StdDev, Skewness, Estimated_Peaks）"
+        description="Calculate temporal distribution metrics (Range, StdDev, Skewness, Estimated_Peaks)"
     )
-    parser.add_argument("--csv_path", required=True, type=Path, help="输入 CSV 路径")
-    parser.add_argument("--out_csv", type=Path, default=None, help="输出 CSV 路径")
+    parser.add_argument("--csv_path", required=True, type=Path, help="Input CSV path")
+    parser.add_argument("--out_csv", type=Path, default=None, help="Output CSV path")
     parser.add_argument("--group_col", type=str, default="Continent",
-                        help='分组列：单列如 "Continent"，或多列如 "Continent,Country"；传 "none" 表示不分组')
-    parser.add_argument("--tmrca_col", type=str, default="Time_years", help="TMRCA 数值列名")
-    parser.add_argument("--ratio_quantile", type=float, default=0.01, help="用于分母的正值样本分位数（0-1）")
-    parser.add_argument("--gmm_max_components", type=int, default=5, help="GMM 最大混合数（用于峰数估计）")
-    parser.add_argument("--gmm_min_samples", type=int, default=10, help="启用 GMM 的最小样本数门槛")
-    parser.add_argument("--random_state", type=int, default=42, help="GMM 随机种子")
+                        help='Grouping columns: single column like "Continent", or multiple like "Continent,Country"; pass "none" for no grouping')
+    parser.add_argument("--tmrca_col", type=str, default="Time_years", help="TMRCA value column name")
+    parser.add_argument("--ratio_quantile", type=float, default=0.01, help="Positive-sample quantile (0-1) used as denominator")
+    parser.add_argument("--gmm_max_components", type=int, default=5, help="Maximum number of GMM components (for peak estimation)")
+    parser.add_argument("--gmm_min_samples", type=int, default=10, help="Minimum sample size threshold to enable GMM")
+    parser.add_argument("--random_state", type=int, default=42, help="GMM random seed")
     parser.add_argument("--skew_method", type=str, default="auto", choices=["auto", "moment", "quantile"],
-                        help="偏度计算方法")
+                        help="Skewness calculation method")
 
     args = parser.parse_args()
 
-    # 校验
+    # Validation
     if not args.csv_path.exists():
-        raise FileNotFoundError(f"输入 CSV 未找到：{args.csv_path}")
+        raise FileNotFoundError(f"Input CSV not found: {args.csv_path}")
     if not (0.0 < args.ratio_quantile < 1.0):
-        raise ValueError(f"--ratio_quantile 必须在 (0,1) 内：当前 {args.ratio_quantile}")
+        raise ValueError(f"--ratio_quantile must be within (0,1): current {args.ratio_quantile}")
     if args.gmm_max_components < 1:
-        raise ValueError("--gmm_max_components 必须 >= 1")
+        raise ValueError("--gmm_max_components must be >= 1")
     if args.gmm_min_samples < 0:
-        raise ValueError("--gmm_min_samples 必须 >= 0")
+        raise ValueError("--gmm_min_samples must be >= 0")
 
     group_col = _parse_group_col(args.group_col)
     df = pd.read_csv(args.csv_path)
 
-    # 计算
+    # Calculation
     res = calc_time_distribution_stats(
         df,
         group_col=group_col,
@@ -255,16 +255,16 @@ def main():
         skew_method=args.skew_method,
     )
 
-    # 打印
+    # Print
     if res.empty:
-        print("结果为空（可能样本过少或列名不匹配）。")
+        print("Empty result (possibly too few samples or mismatched column names).")
     else:
         if have_tabulate:
             print(tabulate(res, headers="keys", tablefmt="github", showindex=False))
         else:
             print(res.to_string(index=False))
 
-    # 写出
+    # Write out
     out_csv: Path
     if args.out_csv is not None:
         out_csv = args.out_csv
@@ -273,7 +273,7 @@ def main():
 
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     res.to_csv(out_csv, index=False, encoding="utf-8-sig")
-    print(f"\n已保存结果到: {out_csv.resolve()}")
+    print(f"\nSaved results to: {out_csv.resolve()}")
 
 
 if __name__ == "__main__":
