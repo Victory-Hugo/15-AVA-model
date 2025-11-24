@@ -14,14 +14,14 @@ from ttkbootstrap.widgets.scrolled import ScrolledText
 
 
 DEFAULTS = {
-    "py_dir": r"F:/OneDrive/文档（科研）/脚本/Download/15-AVA-model/Windows/pipe",
+    "py_dir": r"../python",
     "key_column": "Continent",
     "unique_keys": "Africa,Central_Asia,Southeast_Asia",
     "time_column": "Time_years",
-    "in_time_csv": r"F:/OneDrive/文档（科研）/脚本/Download/15-AVA-model/Windows/input/Time.csv",
-    "in_amova_csv": r"F:/OneDrive/文档（科研）/脚本/Download/15-AVA-model/Windows/input/AMOVA.csv",
-    "in_uniq_csv": r"F:/OneDrive/文档（科研）/脚本/Download/15-AVA-model/Windows/input/public.csv",
-    "out_dir": r"F:/OneDrive/文档（科研）/脚本/Download/15-AVA-model/Windows/output",
+    "in_time_csv": r"Time.csv",
+    "in_amova_csv": r"AMOVA.csv",
+    "in_uniq_csv": r"public.csv",
+    "out_dir": r"/Your output dir/",
     "ancient_threshold": "50000",
     "ratio_quantile": "0.01",
     "kernel_sigma": "0.4",
