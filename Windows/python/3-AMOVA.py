@@ -98,6 +98,27 @@ def compute_origin_scores(df: pd.DataFrame, class_col: str) -> pd.DataFrame:
     return out.sort_values(class_col).reset_index(drop=True)
 
 
+def run(
+    class_col: str,
+    variation_type: str,
+    variation_value: str,
+    input_path: str,
+    output_path: str,
+    print_result: bool = True,
+) -> pd.DataFrame:
+    """
+    Execute AMOVA score calculation.
+    """
+    df = load_amova(input_path, class_col, variation_type, variation_value)
+    out = compute_origin_scores(df, class_col)
+
+    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+    out.to_csv(output_path, index=False)
+    if print_result:
+        print(f"Wrote {len(out)} rows to {output_path}", file=sys.stderr)
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description="AMOVA -> Diversity_pattern_score (linear baseline)")
     ap.add_argument('--class_col', required=True, help='Grouping column name (e.g., Continent/Region)')
@@ -107,11 +128,14 @@ def main():
     ap.add_argument('--output', required=True, help='Output CSV file path')
     args = ap.parse_args()
 
-    df = load_amova(args.input, args.class_col, args.variation_type, args.variation_value)
-    out = compute_origin_scores(df, args.class_col)
-
-    out.to_csv(args.output, index=False)
-    print(f"Wrote {len(out)} rows to {args.output}", file=sys.stderr)
+    run(
+        class_col=args.class_col,
+        variation_type=args.variation_type,
+        variation_value=args.variation_value,
+        input_path=args.input,
+        output_path=args.output,
+        print_result=True,
+    )
 
 
 if __name__ == '__main__':

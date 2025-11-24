@@ -208,6 +208,80 @@ def _parse_group_col(arg: str) -> Optional[Union[str, List[str]]]:
     return s
 
 
+def run(
+    csv_path: Path,
+    out_csv: Optional[Path] = None,
+    group_col: Optional[Union[str, List[str]]] = "Continent",
+    tmrca_col: str = "Time_years",
+    ancient_threshold: float = 100000.0,
+    ratio_quantile: float = 0.01,
+    kernel_scales: Optional[List[float]] = None,
+    kernel_sigma: float = 0.5,
+    time_depth_focus: Optional[float] = None,
+    time_depth_sigma_log10: float = 0.3,
+    print_result: bool = True,
+) -> pd.DataFrame:
+    """
+    Execute time depth metric calculation.
+    """
+    try:
+        from tabulate import tabulate
+        have_tabulate = True
+    except Exception:
+        have_tabulate = False
+
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Input CSV not found: {csv_path}")
+    if not (0.0 < ratio_quantile < 1.0):
+        raise ValueError(f"--ratio_quantile must be within (0,1): current {ratio_quantile}")
+
+    if isinstance(group_col, (list, tuple)):
+        parsed_group_col = list(group_col)
+    elif group_col is None:
+        parsed_group_col = None
+    else:
+        parsed_group_col = _parse_group_col(group_col)  # type: ignore[arg-type]
+    df = pd.read_csv(csv_path)
+
+    # Parse kernel_scales
+    if kernel_scales is not None and kernel_scales != []:
+        parsed_kernel_scales = kernel_scales
+    else:
+        t = float(ancient_threshold)
+        parsed_kernel_scales = [t / 10.0, t, t * 10.0]
+
+    # Calculation
+    res = calc_time_depth_stats(
+        df,
+        group_col=parsed_group_col,
+        tmrca_col=tmrca_col,
+        ancient_threshold=float(ancient_threshold),
+        ratio_quantile=float(ratio_quantile),
+        kernel_scales=parsed_kernel_scales,
+        kernel_sigma=float(kernel_sigma),
+        time_depth_focus=float(time_depth_focus) if time_depth_focus else float(ancient_threshold),
+        time_depth_sigma_log10=float(time_depth_sigma_log10),
+    )
+
+    # Print
+    if print_result:
+        if res.empty:
+            print("Empty result (possibly too few samples or mismatched column names).")
+        else:
+            if have_tabulate:
+                print(tabulate(res, headers="keys", tablefmt="github", showindex=False))
+            else:
+                print(res.to_string(index=False))
+
+    # Write out
+    output_csv = out_csv if out_csv is not None else csv_path.parent / "time_depth_stats.csv"
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    res.to_csv(output_csv, index=False, encoding="utf-8-sig")
+    if print_result:
+        print(f"\nSaved results to: {output_csv.resolve()}")
+    return res
+
+
 def main():
     try:
         from tabulate import tabulate
@@ -242,48 +316,20 @@ def main():
     if not (0.0 < args.ratio_quantile < 1.0):
         raise ValueError(f"--ratio_quantile must be within (0,1): current {args.ratio_quantile}")
 
-    group_col = _parse_group_col(args.group_col)
-    df = pd.read_csv(args.csv_path)
-
-    # Parse kernel_scales
-    if args.kernel_scales:
-        kernel_scales = _parse_kernel_scales(args.kernel_scales)
-    else:
-        t = float(args.ancient_threshold)
-        kernel_scales = [t / 10.0, t, t * 10.0]
-
-    # Calculation
-    res = calc_time_depth_stats(
-        df,
-        group_col=group_col,
+    kernel_scales = _parse_kernel_scales(args.kernel_scales) if args.kernel_scales else None
+    run(
+        csv_path=args.csv_path,
+        out_csv=args.out_csv,
+        group_col=args.group_col,
         tmrca_col=args.tmrca_col,
         ancient_threshold=float(args.ancient_threshold),
         ratio_quantile=float(args.ratio_quantile),
         kernel_scales=kernel_scales,
         kernel_sigma=float(args.kernel_sigma),
-        time_depth_focus=float(args.time_depth_focus) if args.time_depth_focus else float(args.ancient_threshold),
+        time_depth_focus=float(args.time_depth_focus) if args.time_depth_focus else None,
         time_depth_sigma_log10=float(args.time_depth_sigma_log10),
+        print_result=True,
     )
-
-    # Print
-    if res.empty:
-        print("Empty result (possibly too few samples or mismatched column names).")
-    else:
-        if have_tabulate:
-            print(tabulate(res, headers="keys", tablefmt="github", showindex=False))
-        else:
-            print(res.to_string(index=False))
-
-    # Write out
-    out_csv: Path
-    if args.out_csv is not None:
-        out_csv = args.out_csv
-    else:
-        out_csv = args.csv_path.parent / "time_depth_stats.csv"
-
-    out_csv.parent.mkdir(parents=True, exist_ok=True)
-    res.to_csv(out_csv, index=False, encoding="utf-8-sig")
-    print(f"\nSaved results to: {out_csv.resolve()}")
 
 
 if __name__ == "__main__":

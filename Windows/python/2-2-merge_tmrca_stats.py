@@ -78,6 +78,55 @@ def merge_tmrca_stats(
     return df_merged
 
 
+def run(
+    time_depth_csv: Path,
+    time_distribution_csv: Path,
+    out_csv: Path,
+    group_col: Optional[Union[str, List[str]]] = "Continent",
+    print_result: bool = True,
+) -> pd.DataFrame:
+    """
+    Merge TMRCA statistics files.
+    """
+    try:
+        from tabulate import tabulate
+        have_tabulate = True
+    except Exception:
+        have_tabulate = False
+
+    if not time_depth_csv.exists():
+        raise FileNotFoundError(f"Time depth file not found: {time_depth_csv}")
+    if not time_distribution_csv.exists():
+        raise FileNotFoundError(f"Time distribution file not found: {time_distribution_csv}")
+
+    parsed_group_col: Optional[Union[str, List[str]]]
+    if isinstance(group_col, (list, tuple)):
+        parsed_group_col = list(group_col)
+    elif group_col is None:
+        parsed_group_col = None
+    else:
+        parsed_group_col = _parse_group_col(group_col)  # type: ignore[arg-type]
+
+    result = merge_tmrca_stats(
+        time_depth_csv,
+        time_distribution_csv,
+        out_csv,
+        group_col=parsed_group_col,
+    )
+
+    if print_result:
+        if result.empty:
+            print("Merged result is empty.")
+        else:
+            if have_tabulate:
+                print(tabulate(result, headers="keys", tablefmt="github", showindex=False))
+            else:
+                print(result.to_string(index=False))
+            print(f"\nSaved merged result to: {out_csv.resolve()}")
+            print(f"Total {len(result)} group(s)")
+    return result
+
+
 def main():
     try:
         from tabulate import tabulate
@@ -99,32 +148,13 @@ def main():
 
     args = parser.parse_args()
 
-    # Validation
-    if not args.time_depth_csv.exists():
-        raise FileNotFoundError(f"Time depth file not found: {args.time_depth_csv}")
-    if not args.time_distribution_csv.exists():
-        raise FileNotFoundError(f"Time distribution file not found: {args.time_distribution_csv}")
-
-    group_col = _parse_group_col(args.group_col)
-
-    # Merge
-    result = merge_tmrca_stats(
-        args.time_depth_csv,
-        args.time_distribution_csv,
-        args.out_csv,
-        group_col=group_col,
+    run(
+        time_depth_csv=args.time_depth_csv,
+        time_distribution_csv=args.time_distribution_csv,
+        out_csv=args.out_csv,
+        group_col=args.group_col,
+        print_result=True,
     )
-
-    # Print
-    if result.empty:
-        print("Merged result is empty.")
-    else:
-        if have_tabulate:
-            print(tabulate(result, headers="keys", tablefmt="github", showindex=False))
-        else:
-            print(result.to_string(index=False))
-        print(f"\nSaved merged result to: {args.out_csv.resolve()}")
-        print(f"Total {len(result)} group(s)")
 
 
 if __name__ == "__main__":

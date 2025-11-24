@@ -5,12 +5,12 @@ set -euo pipefail
 # Fixed root paths and basic configuration
 ###############################################################################
 
-PY="/mnt/f/OneDrive/文档（科研）/脚本/Download/15-AVA-model/Linux/python"
+PY="15-AVA-model/Linux/python"
 
-IN_TIME_CSV="/mnt/f/OneDrive/文档（科研）/脚本/Download/15-AVA-model/Linux/input/Time.csv"
-IN_AMOVA_CSV="/mnt/f/OneDrive/文档（科研）/脚本/Download/15-AVA-model/Linux/input/AMOVA.csv"
-IN_UNIQ_CSV="/mnt/f/OneDrive/文档（科研）/脚本/Download/15-AVA-model/Linux/input/public.csv"
-OUT="/mnt/f/OneDrive/文档（科研）/脚本/Download/15-AVA-model/Linux/output"
+IN_TIME_CSV="15-AVA-model/Linux/input/Time.csv"
+IN_AMOVA_CSV="15-AVA-model/Linux/input/AMOVA.csv"
+IN_UNIQ_CSV="15-AVA-model/Linux/input/public.csv"
+OUT="15-AVA-model/Linux/output"
 # Fixed uniqueness keywords (same as original command)
 KEY_COLMN="River"
 UNIQUE_KEYS="Yellow River,Yangtze River,Zhujiang River"

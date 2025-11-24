@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 
-def plot_scores(agg_csv: Path, out_png: Path, group_col: str) -> None:
+def plot_scores(agg_csv: Path, out_png: Path, group_col: str, print_result: bool = True) -> None:
     df = pd.read_csv(agg_csv)
     if group_col not in df.columns:
         raise ValueError(f"Aggregated file is missing grouping column: {group_col}")
@@ -49,7 +49,15 @@ def plot_scores(agg_csv: Path, out_png: Path, group_col: str) -> None:
 
     out_png.parent.mkdir(parents=True, exist_ok=True)
     plt.savefig(out_png, dpi=200, bbox_inches="tight")
-    print(f"[OK] Plot complete: {out_png}")
+    if print_result:
+        print(f"[OK] Plot complete: {out_png}")
+
+
+def run(agg_csv: Path, out_png: Path, group_col: str, print_result: bool = True) -> None:
+    """
+    Plot time-threshold sweep score line chart.
+    """
+    plot_scores(agg_csv, out_png, group_col, print_result=print_result)
 
 
 def main() -> None:
@@ -59,7 +67,7 @@ def main() -> None:
     parser.add_argument("group_col", type=str, help="Grouping column name (e.g., River / Continent)")
     args = parser.parse_args()
 
-    plot_scores(args.agg_csv, args.out_png, args.group_col)
+    run(args.agg_csv, args.out_png, args.group_col, print_result=True)
 
 
 if __name__ == "__main__":

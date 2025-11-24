@@ -2,35 +2,19 @@
 # -*- coding: utf-8 -*-
 
 import sys
-import threading
-import subprocess
 import shutil
+import threading
+import argparse
+import importlib.util
+from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
+from types import ModuleType
+from typing import Any, Callable, Dict
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
-import multiprocessing
 
 import ttkbootstrap as tb
 from ttkbootstrap.widgets.scrolled import ScrolledText
-
-
-def is_pyinstaller_exe():
-    """检测是否运行在 PyInstaller 打包的 exe 中"""
-    return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
-
-
-def get_python_executable():
-    """
-    获取 Python 解释器路径。
-    - 如果在源码中运行，返回当前解释器
-    - 如果在 PyInstaller exe 中运行，返回系统 Python 或 "python"
-    """
-    if is_pyinstaller_exe():
-        # 在 exe 中，使用系统 Python 或直接用 "python" 命令
-        return "python"
-    else:
-        # 在源码中运行，使用当前解释器
-        return sys.executable
 
 
 DEFAULTS = {
@@ -66,20 +50,47 @@ DEFAULTS = {
 }
 
 
-def stream_command(cmd, log_func, description):
-    log_func(f"[INFO] {description}")
-    process = subprocess.Popen(
-        cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    assert process.stdout is not None
-    for line in process.stdout:
-        log_func(line.rstrip())
-    process.wait()
-    if process.returncode != 0:
-        raise subprocess.CalledProcessError(process.returncode, cmd)
+_MODULE_CACHE: Dict[Path, ModuleType] = {}
+
+
+def _make_module_name(path: Path) -> str:
+    stem = path.stem.replace("-", "_").replace(".", "_")
+    return f"ava_pipeline_{stem}_{abs(hash(path))}"
+
+
+def _load_run_callable(path: Path) -> Callable[..., Any]:
+    resolved = path.resolve()
+    if resolved not in _MODULE_CACHE:
+        spec = importlib.util.spec_from_file_location(_make_module_name(resolved), resolved)
+        if spec is None or spec.loader is None:
+            raise ImportError(f"Could not load module from {resolved}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _MODULE_CACHE[resolved] = module
+    module = _MODULE_CACHE[resolved]
+    run_func = getattr(module, "run", None)
+    if not callable(run_func):
+        raise AttributeError(f"No callable run() found in {resolved}")
+    return run_func
+
+
+class _LogStream:
+    def __init__(self, log_func: Callable[[str], None]) -> None:
+        self.log_func = log_func
+        self._buffer = ""
+
+    def write(self, text: str) -> None:
+        if not text:
+            return
+        self._buffer += text
+        while "\n" in self._buffer:
+            line, self._buffer = self._buffer.split("\n", 1)
+            self.log_func(line)
+
+    def flush(self) -> None:
+        if self._buffer:
+            self.log_func(self._buffer)
+            self._buffer = ""
 
 
 class PipelineGUI:
@@ -234,6 +245,16 @@ class PipelineGUI:
         self.log_box.see(tk.END)
         self.root.update_idletasks()
 
+    def _run_script(self, description: str, script_path: Path, kwargs: Dict[str, Any]):
+        self.log(f"[INFO] {description}")
+        run_func = _load_run_callable(script_path)
+        stream = _LogStream(self.log)
+        try:
+            with redirect_stdout(stream), redirect_stderr(stream):
+                return run_func(**kwargs)
+        finally:
+            stream.flush()
+
     def run_pipeline(self):
         self.run_button.config(state=tk.DISABLED)
         self.log_box.delete("1.0", tk.END)
@@ -247,124 +268,78 @@ class PipelineGUI:
             out_dir = Path(params["out_dir"])
             out_dir.mkdir(parents=True, exist_ok=True)
 
-            cmd_time_depth = [
-                sys.executable,
-                str(py_dir / "1-time_depth.py"),
-                "--csv_path",
-                params["in_time_csv"],
-                "--out_csv",
-                str(out_dir / "time_depth_stats.csv"),
-                "--group_col",
-                params["key_column"],
-                "--tmrca_col",
-                params["time_column"],
-                "--ancient_threshold",
-                params["ancient_threshold"],
-                "--ratio_quantile",
-                params["ratio_quantile"],
-                "--kernel_sigma",
-                params["kernel_sigma"],
-                "--time_depth_sigma_log10",
-                params["time_depth_sigma_log10"],
-            ]
+            cmd_time_depth = {
+                "csv_path": Path(params["in_time_csv"]),
+                "out_csv": out_dir / "time_depth_stats.csv",
+                "group_col": params["key_column"],
+                "tmrca_col": params["time_column"],
+                "ancient_threshold": float(params["ancient_threshold"]),
+                "ratio_quantile": float(params["ratio_quantile"]),
+                "kernel_sigma": float(params["kernel_sigma"]),
+                "time_depth_sigma_log10": float(params["time_depth_sigma_log10"]),
+                "print_result": True,
+            }
+            kwargs_time_distribution = {
+                "csv_path": Path(params["in_time_csv"]),
+                "out_csv": out_dir / "time_distribution_stats.csv",
+                "group_col": params["key_column"],
+                "tmrca_col": params["time_column"],
+                "ratio_quantile": float(params["ratio_quantile"]),
+                "gmm_max_components": int(params["gmm_max_components"]),
+                "gmm_min_samples": int(params["gmm_min_samples"]),
+                "random_state": int(params["random_state"]),
+                "skew_method": params["skew_method"],
+                "print_result": True,
+            }
 
-            cmd_time_distribution = [
-                sys.executable,
-                str(py_dir / "2-1-time_distribution.py"),
-                "--csv_path",
-                params["in_time_csv"],
-                "--out_csv",
-                str(out_dir / "time_distribution_stats.csv"),
-                "--group_col",
-                params["key_column"],
-                "--tmrca_col",
-                params["time_column"],
-                "--ratio_quantile",
-                params["ratio_quantile"],
-                "--gmm_max_components",
-                params["gmm_max_components"],
-                "--gmm_min_samples",
-                params["gmm_min_samples"],
-                "--random_state",
-                params["random_state"],
-                "--skew_method",
-                params["skew_method"],
-            ]
+            kwargs_merge = {
+                "time_depth_csv": out_dir / "time_depth_stats.csv",
+                "time_distribution_csv": out_dir / "time_distribution_stats.csv",
+                "out_csv": out_dir / "Final_tmrca_stats.csv",
+                "group_col": params["key_column"],
+                "print_result": True,
+            }
 
-            cmd_merge = [
-                sys.executable,
-                str(py_dir / "2-2-merge_tmrca_stats.py"),
-                "--time_depth_csv",
-                str(out_dir / "time_depth_stats.csv"),
-                "--time_distribution_csv",
-                str(out_dir / "time_distribution_stats.csv"),
-                "--out_csv",
-                str(out_dir / "Final_tmrca_stats.csv"),
-                "--group_col",
-                params["key_column"],
-            ]
+            kwargs_amova = {
+                "class_col": params["key_column"],
+                "variation_type": params["variation_type"],
+                "variation_value": params["variation_value"],
+                "input_path": params["in_amova_csv"],
+                "output_path": str(out_dir / "Final_AMOVA_scores.csv"),
+                "print_result": True,
+            }
 
-            cmd_amova = [
-                sys.executable,
-                str(py_dir / "3-AMOVA.py"),
-                "--class_col",
-                params["key_column"],
-                "--variation_type",
-                params["variation_type"],
-                "--variation_value",
-                params["variation_value"],
-                "--input",
-                params["in_amova_csv"],
-                "--output",
-                str(out_dir / "Final_AMOVA_scores.csv"),
-            ]
+            kwargs_unique = {
+                "csv_path": params["in_uniq_csv"],
+                "class_col": params["key_column"],
+                "keyword": params["unique_keyword"],
+                "hap_col": "Haplogroup",
+                "out_dir": str(out_dir),
+                "case_sensitive": False,
+                "print_result": True,
+            }
 
-            cmd_unique = [
-                sys.executable,
-                str(py_dir / "4-Unique.py"),
-                "--csv",
-                params["in_uniq_csv"],
-                "--class-col",
-                params["key_column"],
-                "--keyword",
-                params["unique_keyword"],
-                "--out-dir",
-                str(out_dir),
-            ]
+            kwargs_score = {
+                "tmrca_path": str(out_dir / "Final_tmrca_stats.csv"),
+                "amova_path": str(out_dir / "Final_AMOVA_scores.csv"),
+                "unique_path": str(out_dir / "Final_unique_hap.csv"),
+                "out_path": str(out_dir / "Final_metrics_scored.csv"),
+                "group_col": params["key_column"],
+                "w_time_depth": float(params["w_time_depth"]),
+                "w_time_structure": float(params["w_time_structure"]),
+                "w_diversity": float(params["w_diversity"]),
+                "w_unique": float(params["w_unique"]),
+                "thr_origin": float(params["thr_origin"]),
+                "thr_mix_low": float(params["thr_mix_low"]),
+                "print_result": True,
+            }
 
-            cmd_score = [
-                sys.executable,
-                str(py_dir / "5-score.py"),
-                "--tmrca",
-                str(out_dir / "Final_tmrca_stats.csv"),
-                "--amova",
-                str(out_dir / "Final_AMOVA_scores.csv"),
-                "--unique",
-                str(out_dir / "Final_unique_hap.csv"),
-                "--out",
-                str(out_dir / "Final_metrics_scored.csv"),
-                "--group-col",
-                params["key_column"],
-                "--w-time-depth",
-                params["w_time_depth"],
-                "--w-time-structure",
-                params["w_time_structure"],
-                "--w-diversity",
-                params["w_diversity"],
-                "--w-unique",
-                params["w_unique"],
-                "--thr-origin",
-                params["thr_origin"],
-                "--thr-mix-low",
-                params["thr_mix_low"],
-            ]
-
-            stream_command(cmd_time_depth, self.log, "1) Time depth metrics")
-            stream_command(cmd_time_distribution, self.log, "2) Time distribution metrics")
-            stream_command(cmd_merge, self.log, "3) Merge time metrics")
-            stream_command(cmd_amova, self.log, "4) AMOVA scores")
-            stream_command(cmd_unique, self.log, "5) Unique haplogroups")
-            stream_command(cmd_score, self.log, "6) Final scoring")
+            self._run_script("1) Time depth metrics", py_dir / "1-time_depth.py", cmd_time_depth)
+            self._run_script("2) Time distribution metrics", py_dir / "2-1-time_distribution.py", kwargs_time_distribution)
+            self._run_script("3) Merge time metrics", py_dir / "2-2-merge_tmrca_stats.py", kwargs_merge)
+            self._run_script("4) AMOVA scores", py_dir / "3-AMOVA.py", kwargs_amova)
+            self._run_script("5) Unique haplogroups", py_dir / "4-Unique.py", kwargs_unique)
+            self._run_script("6) Final scoring", py_dir / "5-score.py", kwargs_score)
             if self.vars["enable_time_vary"].get():
                 self._run_time_vary_block(params, py_dir, out_dir)
             self.log("[DONE] Pipeline completed")
@@ -372,9 +347,6 @@ class PipelineGUI:
         except FileNotFoundError as exc:
             self.log(f"[ERROR] File not found: {exc}")
             messagebox.showerror("Error", f"File not found: {exc}")
-        except subprocess.CalledProcessError as exc:
-            self.log(f"[ERROR] Command failed with exit code {exc.returncode}")
-            messagebox.showerror("Error", f"Command failed. See logs for details.")
         except Exception as exc:  # pragma: no cover - safeguard for unexpected issues
             self.log(f"[ERROR] {exc}")
             messagebox.showerror("Error", str(exc))
@@ -418,139 +390,93 @@ class PipelineGUI:
             if score_csv.exists():
                 self.log(f"[SKIP] threshold {thr} already computed")
                 continue
+            td_kwargs = {
+                "csv_path": Path(params["in_time_csv"]),
+                "out_csv": time_depth_csv,
+                "group_col": params["key_column"],
+                "tmrca_col": params["time_column"],
+                "ancient_threshold": float(thr),
+                "ratio_quantile": float(params["ratio_quantile"]),
+                "kernel_sigma": float(params["kernel_sigma"]),
+                "time_depth_sigma_log10": float(params["time_depth_sigma_log10"]),
+                "print_result": True,
+            }
+            self._run_script(f"Time depth @ {thr}", py_dir / "1-time_depth.py", td_kwargs)
 
-            stream_command(
-                [
-                    sys.executable,
-                    str(py_dir / "1-time_depth.py"),
-                    "--csv_path",
-                    params["in_time_csv"],
-                    "--out_csv",
-                    str(time_depth_csv),
-                    "--group_col",
-                    params["key_column"],
-                    "--tmrca_col",
-                    params["time_column"],
-                    "--ancient_threshold",
-                    str(thr),
-                    "--ratio_quantile",
-                    params["ratio_quantile"],
-                    "--kernel_sigma",
-                    params["kernel_sigma"],
-                    "--time_depth_sigma_log10",
-                    params["time_depth_sigma_log10"],
-                ],
-                self.log,
-                f"Time depth @ {thr}",
-            )
+            tdistr_kwargs = {
+                "csv_path": Path(params["in_time_csv"]),
+                "out_csv": time_dist_csv,
+                "group_col": params["key_column"],
+                "tmrca_col": params["time_column"],
+                "ratio_quantile": float(params["ratio_quantile"]),
+                "gmm_max_components": int(params["gmm_max_components"]),
+                "gmm_min_samples": int(params["gmm_min_samples"]),
+                "random_state": int(params["random_state"]),
+                "skew_method": params["skew_method"],
+                "print_result": True,
+            }
+            self._run_script(f"Time distribution @ {thr}", py_dir / "2-1-time_distribution.py", tdistr_kwargs)
 
-            stream_command(
-                [
-                    sys.executable,
-                    str(py_dir / "2-1-time_distribution.py"),
-                    "--csv_path",
-                    params["in_time_csv"],
-                    "--out_csv",
-                    str(time_dist_csv),
-                    "--group_col",
-                    params["key_column"],
-                    "--tmrca_col",
-                    params["time_column"],
-                    "--ratio_quantile",
-                    params["ratio_quantile"],
-                    "--gmm_max_components",
-                    params["gmm_max_components"],
-                    "--gmm_min_samples",
-                    params["gmm_min_samples"],
-                    "--random_state",
-                    params["random_state"],
-                    "--skew_method",
-                    params["skew_method"],
-                ],
-                self.log,
-                f"Time distribution @ {thr}",
-            )
+            merge_kwargs = {
+                "time_depth_csv": time_depth_csv,
+                "time_distribution_csv": time_dist_csv,
+                "out_csv": tmrca_csv,
+                "group_col": params["key_column"],
+                "print_result": True,
+            }
+            self._run_script(f"Merge time metrics @ {thr}", py_dir / "2-2-merge_tmrca_stats.py", merge_kwargs)
 
-            stream_command(
-                [
-                    sys.executable,
-                    str(py_dir / "2-2-merge_tmrca_stats.py"),
-                    "--time_depth_csv",
-                    str(time_depth_csv),
-                    "--time_distribution_csv",
-                    str(time_dist_csv),
-                    "--out_csv",
-                    str(tmrca_csv),
-                    "--group_col",
-                    params["key_column"],
-                ],
-                self.log,
-                f"Merge time metrics @ {thr}",
-            )
+            score_kwargs = {
+                "tmrca_path": str(tmrca_csv),
+                "amova_path": str(common_amova),
+                "unique_path": str(common_unique),
+                "out_path": str(score_csv),
+                "group_col": params["key_column"],
+                "w_time_depth": float(params["w_time_depth"]),
+                "w_time_structure": float(params["w_time_structure"]),
+                "w_diversity": float(params["w_diversity"]),
+                "w_unique": float(params["w_unique"]),
+                "thr_origin": float(params["thr_origin"]),
+                "thr_mix_low": float(params["thr_mix_low"]),
+                "print_result": True,
+            }
+            self._run_script(f"Score @ {thr}", py_dir / "5-score.py", score_kwargs)
 
-            stream_command(
-                [
-                    sys.executable,
-                    str(py_dir / "5-score.py"),
-                    "--tmrca",
-                    str(tmrca_csv),
-                    "--amova",
-                    str(common_amova),
-                    "--unique",
-                    str(common_unique),
-                    "--out",
-                    str(score_csv),
-                    "--group-col",
-                    params["key_column"],
-                    "--w-time-depth",
-                    params["w_time_depth"],
-                    "--w-time-structure",
-                    params["w_time_structure"],
-                    "--w-diversity",
-                    params["w_diversity"],
-                    "--w-unique",
-                    params["w_unique"],
-                    "--thr-origin",
-                    params["thr_origin"],
-                    "--thr-mix-low",
-                    params["thr_mix_low"],
-                ],
-                self.log,
-                f"Score @ {thr}",
-            )
-
-        stream_command(
-            [
-                sys.executable,
-                str(py_dir / "6-aggregate_time_vary_results.py"),
-                str(time_dir),
-                str(agg_csv),
-                params["key_column"],
-            ],
-            self.log,
+        self._run_script(
             "Aggregate time sweep results",
+            py_dir / "6-aggregate_time_vary_results.py",
+            {
+                "base_dir": time_dir,
+                "out_csv": agg_csv,
+                "group_col": params["key_column"],
+                "print_result": True,
+            },
         )
 
-        stream_command(
-            [
-                sys.executable,
-                str(py_dir / "7-plot_time_vary_metrics.py"),
-                str(agg_csv),
-                str(plot_png),
-                params["key_column"],
-            ],
-            self.log,
+        self._run_script(
             "Plot time sweep metrics",
+            py_dir / "7-plot_time_vary_metrics.py",
+            {
+                "agg_csv": agg_csv,
+                "out_png": plot_png,
+                "group_col": params["key_column"],
+                "print_result": True,
+            },
         )
 
 
-def main():
-    root = tb.Window(themename="flatly")
+def run(argv=None):
+    parser = argparse.ArgumentParser(description="AVA Model Pipeline GUI")
+    parser.add_argument("--theme", default="flatly", help="ttkbootstrap theme (default: flatly)")
+    args = parser.parse_args(argv)
+    root = tb.Window(themename=args.theme)
     PipelineGUI(root)
     root.mainloop()
 
 
+def main():
+    run(sys.argv[1:])
+
+
 if __name__ == "__main__":
-    # 防止在打包为exe后出现无限循环创建窗口的问题
-    multiprocessing.freeze_support()
     main()

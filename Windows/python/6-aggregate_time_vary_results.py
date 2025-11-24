@@ -68,6 +68,17 @@ def aggregate(base_dir: Path, out_csv: Path, group_col: str) -> pd.DataFrame:
     return combined
 
 
+def run(base_dir: Path, out_csv: Path, group_col: str, print_result: bool = True) -> pd.DataFrame:
+    """
+    Aggregate multi-threshold score tables and output a long-format table with ancient_threshold column.
+    """
+    combined = aggregate(base_dir, out_csv, group_col)
+    if print_result:
+        print(f"[OK] Aggregated {len(combined)} rows to {out_csv}")
+        print(f"Threshold range: {combined['ancient_threshold'].min():g} - {combined['ancient_threshold'].max():g}")
+    return combined
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Aggregate time-threshold sweep scoring results into a long-form CSV")
     parser.add_argument("base_dir", type=Path, help="Root directory containing threshold_* subdirectories")
@@ -75,9 +86,7 @@ def main() -> None:
     parser.add_argument("group_col", type=str, help="Grouping column name (e.g., River / Continent)")
     args = parser.parse_args()
 
-    combined = aggregate(args.base_dir, args.out_csv, args.group_col)
-    print(f"[OK] Aggregated {len(combined)} rows to {args.out_csv}")
-    print(f"Threshold range: {combined['ancient_threshold'].min():g} - {combined['ancient_threshold'].max():g}")
+    run(args.base_dir, args.out_csv, args.group_col, print_result=True)
 
 
 if __name__ == "__main__":

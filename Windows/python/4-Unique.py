@@ -196,22 +196,23 @@ def compute_and_export_for_keyword(
         'unique_ratio': unique_ratio
     }
 
-def main():
-    parser = argparse.ArgumentParser(description="Export haplogroup list and merged frequency table by category (supports multiple keywords).")
-    parser.add_argument("--csv", required=True, help="Input CSV path (must include columns: Continent, Haplogroup)")
-    parser.add_argument("--class-col", default="Continent", help="Category column name (default Continent)")
-    parser.add_argument("--keyword", required=True,
-                        help='Category keywords; supports multiple, comma-separated, e.g., "Central_Asia,Southeast_Asia"; Chinese keywords are also supported')
-    parser.add_argument("--hap-col", default="Haplogroup", help="Haplogroup column name (default Haplogroup)")
-    parser.add_argument("--out-dir", default="./outputs", help="Output directory (default ./outputs)")
-    parser.add_argument("--case-sensitive", action="store_true", help="Case-sensitive matching (default insensitive)")
-    args = parser.parse_args()
+def run(
+    csv_path: str,
+    class_col: str = "Continent",
+    keyword: str = "",
+    hap_col: str = "Haplogroup",
+    out_dir: str = "./outputs",
+    case_sensitive: bool = False,
+    print_result: bool = True,
+) -> None:
+    """
+    Execute haplogroup uniqueness export and scoring.
+    """
+    out_dir_path = Path(out_dir)
+    freq_dir = out_dir_path / "Frequency_result"
+    df = pd.read_csv(csv_path)
 
-    out_dir = Path(args.out_dir)
-    freq_dir = out_dir / "Frequency_result"  # New: other outputs go to this subdirectory
-    df = pd.read_csv(args.csv)
-
-    keywords = split_keywords(args.keyword)
+    keywords = split_keywords(keyword)
     if not keywords:
         raise ValueError("No valid keyword detected; pass comma-separated values, e.g., --keyword \"Central_Asia,Southeast_Asia\"")
 
@@ -234,16 +235,16 @@ def main():
         score_data = compute_and_export_for_keyword(
             df=df,
             kw_raw=kw,
-            class_col=args.class_col,
-            haplogroup_col=args.hap_col,
+            class_col=class_col,
+            haplogroup_col=hap_col,
             freq_dir=freq_dir,
-            case_insensitive=not args.case_sensitive,
+            case_insensitive=not case_sensitive,
         )
         if score_data is not None:
             all_scores.append(score_data)
             all_unique_haplogroups.update(score_data['scores']['Haplogroup'])
             final_rows.append({
-                args.class_col: score_data['label_for_final'],  # Column name equals --class-col
+                class_col: score_data['label_for_final'],  # Column name equals --class-col
                 'Unique_hap_score': max(0.0, min(1.0, score_data['unique_ratio']))
             })
 
@@ -253,13 +254,37 @@ def main():
 
     # Output Final_unique_hap.csv (directly under out_dir/)
     if final_rows:
-        out_dir.mkdir(parents=True, exist_ok=True)
-        final_df = pd.DataFrame(final_rows, columns=[args.class_col, 'Unique_hap_score'])
-        final_path = out_dir / "Final_unique_hap.csv"
+        out_dir_path.mkdir(parents=True, exist_ok=True)
+        final_df = pd.DataFrame(final_rows, columns=[class_col, 'Unique_hap_score'])
+        final_path = out_dir_path / "Final_unique_hap.csv"
         final_df.to_csv(final_path, index=False, float_format="%.6f")
-        print(f"[OK] Final_unique_hap.csv written: {final_path}")
+        if print_result:
+            print(f"[OK] Final_unique_hap.csv written: {final_path}")
     else:
-        print("[WARN] Final_unique_hap.csv not generated (all keywords empty).")
+        if print_result:
+            print("[WARN] Final_unique_hap.csv not generated (all keywords empty).")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Export haplogroup list and merged frequency table by category (supports multiple keywords).")
+    parser.add_argument("--csv", required=True, help="Input CSV path (must include columns: Continent, Haplogroup)")
+    parser.add_argument("--class-col", default="Continent", help="Category column name (default Continent)")
+    parser.add_argument("--keyword", required=True,
+                        help='Category keywords; supports multiple, comma-separated, e.g., "Central_Asia,Southeast_Asia"; Chinese keywords are also supported')
+    parser.add_argument("--hap-col", default="Haplogroup", help="Haplogroup column name (default Haplogroup)")
+    parser.add_argument("--out-dir", default="./outputs", help="Output directory (default ./outputs)")
+    parser.add_argument("--case-sensitive", action="store_true", help="Case-sensitive matching (default insensitive)")
+    args = parser.parse_args()
+
+    run(
+        csv_path=args.csv,
+        class_col=args.class_col,
+        keyword=args.keyword,
+        hap_col=args.hap_col,
+        out_dir=args.out_dir,
+        case_sensitive=args.case_sensitive,
+        print_result=True,
+    )
 
 if __name__ == "__main__":
     main()

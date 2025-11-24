@@ -206,6 +206,72 @@ def _parse_group_col(arg: str) -> Optional[Union[str, List[str]]]:
     return s
 
 
+def run(
+    csv_path: Path,
+    out_csv: Optional[Path] = None,
+    group_col: Optional[Union[str, List[str]]] = "Continent",
+    tmrca_col: str = "Time_years",
+    ratio_quantile: float = 0.01,
+    gmm_max_components: int = 5,
+    gmm_min_samples: int = 10,
+    random_state: int = 42,
+    skew_method: str = "auto",
+    print_result: bool = True,
+) -> pd.DataFrame:
+    """
+    Execute time distribution metric calculation.
+    """
+    try:
+        from tabulate import tabulate
+        have_tabulate = True
+    except Exception:
+        have_tabulate = False
+
+    if not csv_path.exists():
+        raise FileNotFoundError(f"Input CSV not found: {csv_path}")
+    if not (0.0 < ratio_quantile < 1.0):
+        raise ValueError(f"--ratio_quantile must be within (0,1): current {ratio_quantile}")
+    if gmm_max_components < 1:
+        raise ValueError("--gmm_max_components must be >= 1")
+    if gmm_min_samples < 0:
+        raise ValueError("--gmm_min_samples must be >= 0")
+
+    if isinstance(group_col, (list, tuple)):
+        parsed_group_col = list(group_col)
+    elif group_col is None:
+        parsed_group_col = None
+    else:
+        parsed_group_col = _parse_group_col(group_col)  # type: ignore[arg-type]
+    df = pd.read_csv(csv_path)
+
+    res = calc_time_distribution_stats(
+        df,
+        group_col=parsed_group_col,
+        tmrca_col=tmrca_col,
+        ratio_quantile=float(ratio_quantile),
+        gmm_max_components=int(gmm_max_components),
+        gmm_min_samples=int(gmm_min_samples),
+        random_state=int(random_state),
+        skew_method=skew_method,
+    )
+
+    if print_result:
+        if res.empty:
+            print("Empty result (possibly too few samples or mismatched column names).")
+        else:
+            if have_tabulate:
+                print(tabulate(res, headers="keys", tablefmt="github", showindex=False))
+            else:
+                print(res.to_string(index=False))
+
+    output_csv = out_csv if out_csv is not None else csv_path.parent / "time_distribution_stats.csv"
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    res.to_csv(output_csv, index=False, encoding="utf-8-sig")
+    if print_result:
+        print(f"\nSaved results to: {output_csv.resolve()}")
+    return res
+
+
 def main():
     try:
         from tabulate import tabulate
@@ -240,40 +306,18 @@ def main():
     if args.gmm_min_samples < 0:
         raise ValueError("--gmm_min_samples must be >= 0")
 
-    group_col = _parse_group_col(args.group_col)
-    df = pd.read_csv(args.csv_path)
-
-    # Calculation
-    res = calc_time_distribution_stats(
-        df,
-        group_col=group_col,
+    run(
+        csv_path=args.csv_path,
+        out_csv=args.out_csv,
+        group_col=args.group_col,
         tmrca_col=args.tmrca_col,
         ratio_quantile=float(args.ratio_quantile),
         gmm_max_components=int(args.gmm_max_components),
         gmm_min_samples=int(args.gmm_min_samples),
         random_state=int(args.random_state),
         skew_method=args.skew_method,
+        print_result=True,
     )
-
-    # Print
-    if res.empty:
-        print("Empty result (possibly too few samples or mismatched column names).")
-    else:
-        if have_tabulate:
-            print(tabulate(res, headers="keys", tablefmt="github", showindex=False))
-        else:
-            print(res.to_string(index=False))
-
-    # Write out
-    out_csv: Path
-    if args.out_csv is not None:
-        out_csv = args.out_csv
-    else:
-        out_csv = args.csv_path.parent / "time_distribution_stats.csv"
-
-    out_csv.parent.mkdir(parents=True, exist_ok=True)
-    res.to_csv(out_csv, index=False, encoding="utf-8-sig")
-    print(f"\nSaved results to: {out_csv.resolve()}")
 
 
 if __name__ == "__main__":
